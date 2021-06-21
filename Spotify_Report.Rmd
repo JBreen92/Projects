@@ -1,0 +1,139 @@
+---
+title: "Spotify Project"
+author: "Jon Breen"
+date: "6/21/2021"
+output: html_document
+---
+
+## Synopsis
+
+The purpose of this report is to explore a Spotify data set in order to create a model capable of classifying music based on a specific set of characteristics. This will be done using a variety of models and comparing the results in order to select the best one. Once a model has been created and tested the results will be analyzed and used for further exploration. 
+
+## Initial Preparation and Obtaining the Data
+
+Before we can start looking into the data set there are a few things that we must do in preparation. The first would be to prepare the necessary packages that will be required to continue with this process. The second would be to actually obtain the data set.
+
+### Loading Required Libraries
+
+```{r echo = TRUE}
+suppressMessages(library(tidyverse))
+suppressMessages(library(caret))
+suppressMessages(library(corrplot))
+suppressMessages(library(gbm))
+```
+
+### Reading in the Data
+
+```{r echo = TRUE}
+suppressMessages(spotify <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-01-21/spotify_songs.csv'))
+```
+
+## Data Exploration
+
+Now that we have our data the next step is to examine it. The data set contains 23 variables, but many of them aren't able to contribute anything of value for the purposes of this report. There are also other variables that need to be addressed.
+
+### Variable Selection and Adjusting
+
+```{r echo = TRUE}
+head(spotify)
+```
+
+As you can see there are a variety of variables in this data set, but previously mentioned only a select few of them are beneficial to this report. The variables that are of importance are the playlist_genre, which will be our dependent variable, and the measurable track characteristics (such as loudness, danceability, etc.)
+
+```{r echo = TRUE}
+spotify1 <- spotify %>% select(playlist_genre:duration_ms) %>% select(-playlist_subgenre)
+
+head(spotify1)
+```
+
+After removing the unnecessary variables we can once more take a quick look at the data. What we're left with is quantifiable values that can, hopefully, be used to classify a song into a specific genre. However, there are a few variables that need to be looked at. Specifically playlist_genre, key, and mode. Based on the range of values it would probably be best to convert them into factor variables.
+
+```{r echo = TRUE}
+spotify1 <- spotify1 %>% mutate(across(c(playlist_genre, key, mode), factor))
+```
+
+### Brief Look at the Remaining Data
+With only the appropriate variables remaining and converted to the proper data type, we can take a brief look at the remaining variables to make sure we can proceed. Playlist_genre, key, and mode will be left out due to them being factor variables.
+
+```{r echo = TRUE}
+corrplot(cor(spotify1 %>% select(-playlist_genre, -key, -mode)), type = "upper", diag = FALSE)
+```
+
+Looking at the results of the corrplot there doesn't appear to be a lot of collinearity among the data. The only variable that might be of concern is energy due to its correlation with loudness and acousticness. It will remain for the time being, but it's something to keep in mind.
+
+## Model Creation
+Once the data has been fully explored and cleaned we an move on to the meat of this report - the model creation. A few steps will be taken in order to create sufficient models. First, we will create a training set and a test set. The training set will be used to build the models and select the best one, while the test will server to, well, test the model.
+
+### Creating Train/Test Split
+
+```{r echo = TRUE}
+set.seed(123)
+inTrain1 <- createDataPartition(y = spotify1$playlist_genre, p = .7, list = FALSE)
+training1 <- spotify1[inTrain1,]
+testing1 <- spotify1[-inTrain1,]
+```
+
+### Initial Models
+
+```{r echo = TRUE}
+control <- trainControl(method = "cv", number = 5)
+
+rfGrid <- expand.grid(mtry = c(1:5))
+gbmGrid <- expand.grid(interaction.depth = c(3, 5), 
+                       n.trees = (1:4)*100, 
+                       shrinkage = 0.1, 
+                       n.minobsinnode = c(5, 10))
+
+mod_rf <- train(playlist_genre ~ ., data = training1, method = "rf", trControl = control,
+                preProcess = c("center", "scale"), tuneGrid = rfGrid)
+
+mod_gbm <- train(playlist_genre ~ ., data = training1, method = "gbm", trControl = control,
+                 verbose = FALSE, preProcess = c("center", "scale"), tuneGrid = gbmGrid)
+
+mod_knn <- train(playlist_genre ~ ., data = training1, method = "knn", trControl = control,
+                 preProcess = c("center", "scale"))
+```
+
+Three different models were used initially: Random Forest, Gradient Boosting, and K Nearest Neighbors. A grid search was used for the RF (although caret only allows for one hyperparameter to be tuned in this case) and the GBM models while the KNN model was ran with the defaults. Caret also ran a 5-fold cross validation on the models so they can be compared.
+
+### Basic Model Tuning and Selection
+
+We can start the turning and selection process by looking at some of the results we obtained.
+
+```{r echo = TRUE}
+mod_rf$results %>% arrange(desc(Accuracy)) %>% head()
+mod_gbm$results %>% arrange(desc(Accuracy)) %>% head()
+mod_knn$results %>% arrange(desc(Accuracy)) %>% head()
+```
+
+Looking at the results from the cross validation it seems that the Random Forest model provides the best accuracy. Since Caret only allows for minimal tuning with this particular there isn't much more improvement to do. Another possible step would be look at the GBM model and alter the grid search, however there doesn't seem to be any clear indication of a direction to move. The top models use a variety of n.trees, n.minobsinnode, and interaction.depth parameters so nothing stands out immediately. It's unlikely that there will be any significant increases in the accuracy if more time is spent tuning, so it seems like the Random Forest model will be the best choice. 
+
+## Testing the Model
+
+The last step in this model building process is to test our selected model against the test set. We will then look at the results and try to garner some conclusions.
+
+### Results
+
+```{r echo = TRUE}
+pred_rf <- predict(mod_rf, testing1)
+
+results_rf <- confusionMatrix(pred_rf, testing1$playlist_genre) %>% print()
+```
+
+### Analyzing the Results
+
+After looking at the results of our model, there are a few things that might be of importance to note. First, and most obvious, is the accuracy.
+
+```{r echo = TRUE}
+round(results_rf$overall, 4)
+```
+
+The model ended up predicting the genre of songs in the test set with an accuracy of 55.77%. While this might seem low at first, it's worth considering the fact that this accuracy is an improvement of nearly 40% on average when randomly guessing. Despite that, though, the resulting accuracy is still less than ideal.
+
+The accuracy isn't the only thing that should be looked at though. The prediction results also tell another story that can be dug into.
+
+```{r echo = TRUE}
+results_rf$byClass[,8]
+```
+
+These numbers are the balanced accuracy ratings by genre. While the overall accuracy wasn't particularly high, some of the by genre ratings are interesting. For example, rock music has a balanced accuracy of 84.97%. Conversely, pop music has a balanced accuracy rating of only 59.92%. That is a significant difference. This could lead to the question - is there a relationship between song genre and predictability. Extending from this, one might ask the question - Is there a relationship between genres and their likelihood to be confused with one another. 
