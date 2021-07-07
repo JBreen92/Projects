@@ -94,7 +94,9 @@ coffee_ratings %>%
       ggplot(aes(species, total_cup_points, fill = species)) + 
           geom_violin() +
           stat_summary(fun.data = "mean_sdl", geom = "pointrange") +
-          labs(title = "Coffee Rating Violin Plot by Species") +
+          labs(title = "Score (Total Cup Points) by Species",
+               x = "Species",
+               y = "Score") +
           theme(panel.grid.major.x = element_blank(), panel.grid.minor.y = element_blank(), 
                 panel.background = element_rect(fill = "white"), panel.grid = element_line(color = "grey"))
 ```
@@ -118,7 +120,9 @@ coffee_ratings_no_outliers %>%
       ggplot(aes(species, total_cup_points, fill = species)) +
           geom_violin(trim = FALSE) +
           stat_summary(fun.data = "mean_sdl", geom = "pointrange") +
-          labs(title = "Coffee Rating Violin Plot by Species") +
+          labs(title = "Score (Total Cup Points) by Species",
+               x = "Species",
+               y = "Score") +
           theme(panel.grid.major.x = element_blank(), panel.grid.minor.y = element_blank(), 
                 panel.background = element_rect(fill = "white"), panel.grid = element_line(color = "grey"))
 ```
@@ -272,7 +276,11 @@ coffee_ratings_arabica %>%
       geom_point(alpha = .4) +
       geom_smooth(method = "lm") +
       theme(axis.line.x.bottom = element_line(color = "black"),
-         axis.line.y.left = element_line(color = "black"), panel.background = element_blank())
+         axis.line.y.left = element_line(color = "black"), panel.background = element_blank()) +
+      labs(title = "Score (Total Cup Points) Versus Mean Altitude of Submitted Coffees",
+           subtitle = "Grouped by Greater/Less Than Average Score",
+           x = "Mean Altitude of Submitted Coffees",
+           y = "Score")
 ```
 
 This is just a quick point graph to take a brief look at the relationship between mean altitude and the resulting total points given of each coffee. For further exploration the points have been separated between greater than and less than the average and a linear model has been roughly fit for each group. If any relationship does exist, which of course would require more exploration, it appears to be weak for both groups.
@@ -285,7 +293,10 @@ coffee_ratings_arabica %>%
       scale_color_gradient(low = "blue", high = "red") +
       theme(panel.background = element_blank(), 
             axis.line.x.bottom = element_line(color = "black"),
-            axis.line.y.left = element_line(color = "black"))
+            axis.line.y.left = element_line(color = "black")) +
+      labs(title = "Score (Total Cup Points) Versus Grading Date",
+           x = "Grading Date",
+           y = "Score")
 ```
 
 The relationship between date and score also appears to be very weak if one does indeed exist. While the trend rises and falls over time, the overall trend appears to be quite stable with a linear model having only a very small slope.
@@ -301,7 +312,10 @@ coffee_ratings_arabica %>%
                panel.grid.major.y = element_line(color = "black"),
                panel.grid.minor.y = element_line(color = "black"),
                panel.background = element_rect(fill = "grey"),
-               legend.position = "none")
+               legend.position = "none") +
+         labs(title = "Average Score (Total Cup Points) by Processing Method",
+              x = "Processing Method",
+              y = "Score")
 
 coffee_ratings_arabica %>% 
       filter(!is.na(processing_method)) %>%
