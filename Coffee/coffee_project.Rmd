@@ -1,0 +1,313 @@
+---
+title: "Coffee Project"
+author: "Jon Breen"
+date: "7/2/2021"
+output: html_document
+---
+
+## Synopsis
+The purpose of this project is to practice some basic data exploration and brush up on data visualization techniques. The data will be examined in an effort to clean any major mistakes including far outliers and typos. Variables will also be looked and changed to their appropriate data type if necessary. For visualization techniques, a variety of different graphs will be used to explore relationships between the variable. They will be solely for the purpose of highlighting surface level trends and interactions.
+
+## Loading Packages
+```{r echo = TRUE}
+suppressMessages(library(tidyverse))
+suppressMessages(library(gridExtra))
+suppressMessages(library(cowplot))
+suppressMessages(library(viridis))
+suppressMessages(library(lubridate))
+suppressMessages(library(corrplot))
+```
+
+## Getting the Data and Initial Cleaning
+```{r echo = TRUE}
+suppressMessages(coffee_ratings <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-07-07/coffee_ratings.csv'))
+
+str(coffee_ratings, give.attr = FALSE)
+```
+
+If we take a quick look at the data here, we can see a few variables that are incorrectly classified. These are easily fixed by using mdy() from lubridate to change the data character strings to actual dates, and using factor() to convert the other variables to factors. Note that not every variable will be adjusted, only the ones that are focused on for this report.
+
+```{r echo = TRUE}
+coffee_ratings$grading_date <- mdy(coffee_ratings$grading_date)
+coffee_ratings$country_of_origin <- factor(coffee_ratings$country_of_origin)
+coffee_ratings$certification_body <- factor(coffee_ratings$certification_body)
+coffee_ratings$species <- factor(coffee_ratings$species)
+coffee_ratings$processing_method <- factor(coffee_ratings$processing_method)
+```
+
+With those variables properly adjusted there are quick fixes to be made with the data. The variable "in_country_partner" isn't one that will be looked in this report, but seeing as it shares a mistake with "certification_body" it can easily be cleaned as well. We can also easily clean the "country_of_origin" variable by removing the few NA values.
+
+```{r echo = TRUE}
+unique(coffee_ratings$certification_body)
+
+coffee_ratings[which(coffee_ratings$certification_body == "Blossom Valley International\n"), 
+               which(colnames(coffee_ratings) == "certification_body")] <- "Blossom Valley International"
+
+coffee_ratings[which(coffee_ratings$in_country_partner == "Blossom Valley International\n"), 
+               which(colnames(coffee_ratings) == "in_country_partner")] <- "Blossom Valley International"
+
+coffee_ratings[which(coffee_ratings$in_country_partner == "Specialty Coffee Ass"), 
+               which(colnames(coffee_ratings) == "in_country_partner")] <- "Specialty Coffee Association"
+
+sum(is.na(coffee_ratings$country_of_origin))
+
+coffee_ratings <- coffee_ratings %>%
+                                 filter(!is.na(country_of_origin))
+```
+
+## Basic Data Exploration and Further Cleaning
+With the more obvious values cleaned we can move on to some data exploration. 
+
+```{r echo = TRUE}
+boxplot(coffee_ratings$altitude_mean_meters)
+```
+
+Obviously there are some issues with this variable. There are a few outlying values that are so extreme that it's making the boxplox nearly undreadable. Removing these data points is an option, but upon further inspection the extreme values are mostly like the result of a simple mistake that can be fixed.
+```{r echo = TRUE}
+coffee_ratings[which(coffee_ratings$altitude_low_meters == 190164), 
+               c("altitude_low_meters", "altitude_high_meters", "altitude_mean_meters")] <- 1901.64
+
+coffee_ratings[which(coffee_ratings$altitude_low_meters == 110000.00), 
+               c("altitude_low_meters", "altitude_high_meters", "altitude_mean_meters")] <- 1100.00
+
+coffee_ratings[which(coffee_ratings$altitude_low_meters == 11000.00), 
+               c("altitude_low_meters", "altitude_high_meters", "altitude_mean_meters")] <- 1100.00
+
+boxplot(coffee_ratings$altitude_mean_meters)
+```
+
+There are still quite a few outliers within this data, and if further examination were to be done it might be best to remove them. However, for the sake of this report this will suffice. 
+
+We can also look at a few other variables. The variable "species" has 2 categories (arabica and robusta) and we can look at some differences and similarities between the two.
+
+```{r echo = TRUE}
+coffee_ratings %>%
+      group_by(species) %>%
+      count() %>%
+      rmarkdown::paged_table()
+```
+
+It's worth noting that the robusta category has a very limited amount of data. Eventually we will remove this category and focus entirely on arabica, but before doing that we can at least take a quick peek.
+
+```{r echo = TRUE}
+coffee_ratings %>%
+      ggplot(aes(species, total_cup_points, fill = species)) + 
+          geom_violin() +
+          stat_summary(fun.data = "mean_sdl", geom = "pointrange") +
+          labs(title = "Coffee Rating Violin Plot by Species") +
+          theme(panel.grid.major.x = element_blank(), panel.grid.minor.y = element_blank(), 
+                panel.background = element_rect(fill = "white"), panel.grid = element_line(color = "grey"))
+```
+
+Again there are some extreme outliers that are making our graph very difficult to read. One approach to this would be to pick some the extreme ouliers in both levels of our "species" variable and remove them.
+
+```{r echo = TRUE}
+coffee_ratings_wide <- coffee_ratings %>%
+                            pivot_wider(names_from = species, values_from = total_cup_points)
+
+arabica_out <- boxplot.stats(coffee_ratings_wide$Arabica, coef = 3)$out
+robusta_out <- boxplot.stats(coffee_ratings_wide$Robusta, coef = 3)$out
+
+coffee_ratings_no_outliers <- coffee_ratings_wide %>%
+                                    filter(!Arabica %in% arabica_out, !Robusta %in% robusta_out) %>%
+                                    pivot_longer(cols = c(Arabica, Robusta), names_to = "species", 
+                                                 values_to = "total_cup_points",
+                                                 values_drop_na = TRUE)
+
+coffee_ratings_no_outliers %>% 
+      ggplot(aes(species, total_cup_points, fill = species)) +
+          geom_violin(trim = FALSE) +
+          stat_summary(fun.data = "mean_sdl", geom = "pointrange") +
+          labs(title = "Coffee Rating Violin Plot by Species") +
+          theme(panel.grid.major.x = element_blank(), panel.grid.minor.y = element_blank(), 
+                panel.background = element_rect(fill = "white"), panel.grid = element_line(color = "grey"))
+```
+
+The violin plots for both levels seem to be similar with one another. Again it's hard to draw any real conclusions based on these because of the small sample size for robusta.
+
+```{r echo = TRUE}
+features <- names(coffee_ratings_no_outliers)[which(colnames(coffee_ratings_no_outliers) == "aroma"):
+                                         which(colnames(coffee_ratings_no_outliers) == "moisture")]
+
+coffee_ratings_no_outliers %>% 
+      select(c("species", features)) %>%
+      pivot_longer(cols = features) %>%
+      ggplot(aes(value)) +
+          geom_density(aes(color = species)) +
+          facet_wrap(~name, scales = "free") +
+          labs(title = "Coffee Rating Features Density Plot by Species") +
+          theme(axis.text.y = element_blank(), panel.grid.major = element_blank(), 
+                panel.grid.minor = element_blank(), panel.background = element_rect(fill = "white"),
+                axis.ticks.y = element_blank(), axis.line.x.bottom = element_line(color = "black")) +
+                xlim(0, 10)
+```
+
+The only substantial difference between the two species types in this series of plots comes from the "sweetness" variable. Arabica appears to be rated much higher on the sweetness scale on average than robusta is. The trens within the other variables are mostly similar.
+
+Now that we've taken a quick look at the differences between the species types we can go ahead and remove the robusta level.
+
+```{r echo = TRUE}
+coffee_ratings_arabica <- coffee_ratings_no_outliers %>%
+                                 filter(species == "Arabica")
+```
+
+```{r echo = FALSE}
+rm(features)
+rm(arabica_out)
+rm(robusta_out)
+rm(coffee_ratings_wide)
+rm(coffee_ratings_no_outliers)
+```
+
+## Further Data Exploration and Visualization
+We have successfully cleaned our data enough to proceed with some further exploration and visualization.
+```{r echo = TRUE}
+average <- mean(coffee_ratings_arabica$total_cup_points)
+
+coffee_ratings_arabica <- coffee_ratings_arabica %>% 
+               mutate(greater = total_cup_points > average)
+
+coffee_greater_sum <- coffee_ratings_arabica %>% 
+            group_by(country_of_origin) %>% 
+            summarise(greater_sum = sum(greater))
+
+order_names <- coffee_ratings_arabica %>% 
+                  group_by(country_of_origin) %>%
+                  summarise(count = n()) %>% 
+                  arrange(count)
+
+order_names <- as.vector(order_names$country_of_origin)
+
+coffee_ratings_arabica$country_of_origin <- factor(coffee_ratings_arabica$country_of_origin, levels = order_names)
+coffee_greater_sum$country_of_origin <- factor(coffee_greater_sum$country_of_origin, levels = order_names)
+```
+
+To start, a few mutations and summarizes are needed. We find the average of "total_cup_points" and then look at which submitted coffees score higher than that value. We then group our data by "country_of_origin" and count how many times a particular country scores higher than the average. 
+
+```{r echo = TRUE, fig.width = 9}
+coffee_ratings_arabica %>% 
+   group_by(country_of_origin) %>%
+   summarise(count = n()) %>%
+   left_join(., coffee_greater_sum, by = "country_of_origin") %>%
+   ggplot(aes(reorder(country_of_origin, desc(-count)), count, col = country_of_origin)) + 
+   geom_bar(fill = "white", stat = "identity", show.legend = FALSE, width = .75) + 
+   geom_bar(mapping = aes(country_of_origin, greater_sum, fill = country_of_origin), 
+            stat = "identity", position = "identity", show.legend = FALSE, width = .75) + 
+   coord_flip() + 
+   theme(panel.grid.major.y = element_blank(), panel.background = element_rect(color = "light grey")) +
+   labs(title = "Count of Distinct Coffees Submitted for Scoring by Country of Origin",
+        subtitle = "Filled by Count of Coffees Above Cross-Country Average Score",
+        y = "Count of Coffees Submitted for Scoring",
+        x = "Country of Origin") +
+   scale_fill_viridis(option = "viridis", discrete = TRUE, direction = -1, end = .7) +
+   scale_color_viridis(option = "viridis", discrete = TRUE, direction = -1, end = .7) +
+   annotate(geom = "rect", xmin = 4.5, xmax = 12, ymin = 112.5, ymax = 235, fill = "light grey",
+            color = "black") +
+   annotate(geom = "rect", xmin = 8.5, xmax = 11, ymin = 119, ymax = 131,
+            fill = "#440154", color = "#440154") +
+   annotate(geom = "rect", xmin = 5.5, xmax = 8, ymin = 119, ymax = 131,
+            fill = "white", color = "#440154") +
+   annotate(geom = "text", label = "greater than the cross-country average", 
+            x = 9.8, y = 183) +
+   annotate(geom = "text", label = "less than the cross-country average", 
+            x = 6.8, y = 180)
+```
+
+This plot displays the submitted coffee counts for each country as well as the amount of submitted coffees that score higher than the average. The primary purpose for this plot is to expose which countries have a higher tendency to submit high quality coffees. For example, while Mexico submits the most coffees for scoring, they have a relatively low proportion of scores that are above average. Columbia, on the other hand, submits a high number of coffees and a large proportion of them are above average. This might lead one to believe that a coffee from Columbia is, on average, more likely to be of higher quality. Of course further exploration would be needed to truly derive any conclusions, but this provides a surface level display of potential relationships.
+
+```{r echo = TRUE, fig.width = 9}
+coffee_ratings_arabica %>%
+   group_by(country_of_origin) %>%
+   summarise(count = n()) %>%
+   filter(count > 10) %>%
+   left_join(., coffee_greater_sum, by = "country_of_origin") %>%
+   mutate(percent_total = count/sum(count), 
+          greater_percent = greater_sum/count) %>%
+   ggplot(aes(reorder(country_of_origin, desc(-greater_percent)), greater_percent, fill = country_of_origin)) + 
+   geom_bar(aes(col = country_of_origin), stat = "identity", show.legend = FALSE, width = .75) + 
+   geom_bar(mapping = aes(country_of_origin, percent_total), fill = "white", 
+            stat = "identity", position = "identity", show.legend = FALSE, width = .75) + 
+   geom_bar(mapping = aes(country_of_origin, percent_total, fill = country_of_origin), 
+            stat = "identity", position = "identity", show.legend = FALSE, width = .5, col = 'white') +
+   coord_flip() + 
+   theme(panel.grid.major.y = element_blank(), panel.background = element_rect(color = "light grey")) +
+   labs(title = paste("Percentage of Coffees Submitted for Scoring Above Cross-Country Average", "by Country of                             Origin", sep = "\n"),
+        subtitle = "Overlaid by Percentage of Total Coffees Submitted for Scoring",
+        y = "Percentage",
+        x = "Country of Origin") +
+   scale_fill_viridis(option = "viridis", discrete = TRUE, direction = -1, end = .7) +
+   scale_color_viridis(option = "viridis", discrete = TRUE, direction = -1, end = .7) +
+   annotate(geom = "rect", xmin = 4, xmax = 6, ymin = .55, ymax = .96, fill = "light grey",
+            color = "black") +
+   annotate(geom = "rect", xmin = 2, xmax = 4, ymin = .55, ymax = .96, fill = "light grey",
+            color = "black") +
+   annotate(geom = "rect", xmin = 4.5, xmax = 5.5, ymin = .57, ymax = .62, fill = "#25848e",
+            color = "#25848e") +
+   annotate(geom = "rect", xmin = 2.5, xmax = 3.5, ymin = .57, ymax = .62, fill = "white",
+            color = "white") +
+   annotate(geom = "rect", xmin = 2.66, xmax = 3.34, ymin = .573, ymax = .617, fill = "#25848e",
+            color = "#25848e") +
+   annotate(geom = "text", label = "% above cross-country average", 
+            x = 5, y = .79) +
+   annotate(geom = "text", label = "% of total submitted coffees", 
+            x = 3, y = .77)
+```
+
+This plot is similar to the first, except there are a few key differences. First off, this plot is looking at percentages instead of raw counts. Second, the background bars are the percentage of coffees above the average score and the overlaying bars are the percentage of total submittedd coffees. This plot provides similar information but puts the emphasis on coffee quality rather than raw submission counts. 
+
+```{r echo = TRUE}
+coffee_ratings_arabica %>% 
+      group_by(certification_body) %>%
+      summarise(cert_avg = mean(total_cup_points)) %>%
+      filter(cert_avg == max(cert_avg) | cert_avg == min(cert_avg)) %>%
+      print() %>%
+      summarise(difference = max(cert_avg) - min(cert_avg))
+```
+
+It might also be important to explore the relationships between different certification bodies and the scores they hand out. If certain bodies are more likely to rate higher, then they could potentially explain why some countries have higher scores. We can see in the printed results above that there isn't a huge difference between the highest and lowest average scores, but there are a few points separating them. This could be another variable worth exploring further in the future.
+
+```{r echo = TRUE}
+coffee_ratings_arabica %>% 
+   ggplot(aes(altitude_mean_meters, total_cup_points, col = greater)) + 
+      geom_point(alpha = .4) +
+      geom_smooth(method = "lm") +
+      theme(axis.line.x.bottom = element_line(color = "black"),
+         axis.line.y.left = element_line(color = "black"), panel.background = element_blank())
+```
+
+This is just a quick point graph to take a brief look at the relationship between mean altitude and the resulting total points given of each coffee. For further exploration the points have been separated between greater than and less than the average and a linear model has been roughly fit for each group. If any relationship does exist, which of course would require more exploration, it appears to be weak for both groups.
+
+```{r echo = TRUE}
+coffee_ratings_arabica %>%
+   ggplot(aes(grading_date, total_cup_points, col = total_cup_points)) +
+      geom_line() +
+      geom_smooth(method = "lm", color = "yellow") +
+      scale_color_gradient(low = "blue", high = "red") +
+      theme(panel.background = element_blank(), 
+            axis.line.x.bottom = element_line(color = "black"),
+            axis.line.y.left = element_line(color = "black"))
+```
+
+The relationship between date and score also appears to be very weak if one does indeed exist. While the trend rises and falls over time, the overall trend appears to be quite stable with a linear model having only a very small slope.
+
+```{r echo = TRUE}
+coffee_ratings_arabica %>% 
+      filter(!is.na(processing_method)) %>%
+      group_by(processing_method) %>%
+      ggplot(aes(processing_method, total_cup_points, fill = processing_method)) +
+         geom_boxplot(color = "white") +
+         scale_fill_manual(values = c("#2426d1", "#6404b8", "#cf3e4d", "#1596d6", "#069658")) +
+         theme(panel.grid.major.x = element_blank(),
+               panel.grid.major.y = element_line(color = "black"),
+               panel.grid.minor.y = element_line(color = "black"),
+               panel.background = element_rect(fill = "grey"),
+               legend.position = "none")
+
+coffee_ratings_arabica %>% 
+      filter(!is.na(processing_method)) %>%
+      group_by(processing_method) %>%
+      count() %>%
+      rmarkdown::paged_table()
+```
+
+This is another graph that needs some extra consideration. Most of these levels have small sample sizes so it's hard to draw conclusions based on their individual boxplots. There are also a few categories that probably need further cleaning to remove outliers. From this surface level analysis it appears there aren't any substantial differences between the washing method and the resulting scores though, with other being the lowest and natural/dry being the highest on average. 
