@@ -59,10 +59,10 @@ coffee_ratings <- coffee_ratings %>%
 With the more obvious values cleaned we can move on to some data exploration. 
 
 ```{r echo = TRUE}
-boxplot(coffee_ratings$altitude_mean_meters)
+boxplot(coffee_ratings$altitude_mean_meters, ylab = "Mean Altitudes of Submitted Coffees")
 ```
 
-Obviously there are some issues with this variable. There are a few outlying values that are so extreme that it's making the boxplox nearly undreadable. Removing these data points is an option, but upon further inspection the extreme values are mostly like the result of a simple mistake that can be fixed.
+Obviously there are some issues with this variable. There are a few outlying values that are so extreme that it's making the boxplox nearly unreadable. Removing these data points is an option, but upon further inspection the extreme values are mostly like the result of a simple mistake that can be fixed.
 ```{r echo = TRUE}
 coffee_ratings[which(coffee_ratings$altitude_low_meters == 190164), 
                c("altitude_low_meters", "altitude_high_meters", "altitude_mean_meters")] <- 1901.64
@@ -73,7 +73,7 @@ coffee_ratings[which(coffee_ratings$altitude_low_meters == 110000.00),
 coffee_ratings[which(coffee_ratings$altitude_low_meters == 11000.00), 
                c("altitude_low_meters", "altitude_high_meters", "altitude_mean_meters")] <- 1100.00
 
-boxplot(coffee_ratings$altitude_mean_meters)
+boxplot(coffee_ratings$altitude_mean_meters, ylab = "Mean Altitudes of Submitted Coffees")
 ```
 
 There are still quite a few outliers within this data, and if further examination were to be done it might be best to remove them. However, for the sake of this report this will suffice. 
@@ -93,7 +93,8 @@ It's worth noting that the robusta category has a very limited amount of data. E
 coffee_ratings %>%
       ggplot(aes(species, total_cup_points, fill = species)) + 
           geom_violin() +
-          stat_summary(fun.data = "mean_sdl", geom = "pointrange") +
+          stat_summary(fun.data = "mean_sdl", geom = "pointrange", color = "white") +
+          scale_fill_manual(values = c("#0c34c4", "#ba1209")) +
           labs(title = "Score (Total Cup Points) by Species",
                x = "Species",
                y = "Score") +
@@ -119,7 +120,8 @@ coffee_ratings_no_outliers <- coffee_ratings_wide %>%
 coffee_ratings_no_outliers %>% 
       ggplot(aes(species, total_cup_points, fill = species)) +
           geom_violin(trim = FALSE) +
-          stat_summary(fun.data = "mean_sdl", geom = "pointrange") +
+          stat_summary(fun.data = "mean_sdl", geom = "pointrange", color = "white") +
+          scale_fill_manual(values = c("#0c34c4", "#ba1209")) +
           labs(title = "Score (Total Cup Points) by Species",
                x = "Species",
                y = "Score") +
